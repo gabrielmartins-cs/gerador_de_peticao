@@ -46,12 +46,43 @@
         }
 
         .citacao-box {
-            background-color: #fff9e6;
-            border-left: 4px solid #ffc107;
-            padding: 10px;
-            border-radius: 4px;
+            background-color: #f8fafc;
+            border-left: 4px solid #1e3a5f;
+            border-top: 1px solid #e2e8f0;
+            border-right: 1px solid #e2e8f0;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 12px 16px;
+            border-radius: 0 6px 6px 0;
+        }
+
+        /* Estilos de Arraste e Minimização */
+        .cursor-grab {
+            cursor: grab;
+        }
+
+        .cursor-grab:active {
+            cursor: grabbing;
+        }
+
+        .sortable-ghost {
+            opacity: 0.35;
+            background-color: #e9ecef !important;
+            border: 2px dashed #0d6efd !important;
+        }
+
+        .cabecalho-bloco,
+        .cabecalho-tese {
+            user-select: none;
+        }
+
+        .titulo-resumo-tese {
+            max-width: 450px;
+            color: #198754;
+            font-weight: 600;
         }
     </style>
+    <!-- SortableJS para Arrastar e Organizar -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 </head>
 
 <body>
@@ -303,15 +334,16 @@
     <script>
         let contadorBloco = 0;
 
-        function iniciarWysiwyg(seletor) {
+        function iniciarWysiwyg(seletor, altura = 140) {
             $(seletor).summernote({
-                height: 140,
+                height: altura,
                 toolbar: [
                     ['style', ['bold', 'italic', 'underline', 'clear']],
+                    ['color', ['color']], // << Habilita Marca-Texto (fundo) e Cor da Fonte
                     ['para', ['ul', 'ol', 'paragraph']],
                     ['view', ['codeview']]
                 ],
-                placeholder: 'Digite o conteúdo formatado aqui...'
+                placeholder: 'Digite ou cole o conteúdo formatado aqui...'
             });
         }
 
@@ -324,9 +356,15 @@
                 const blocoId = contadorBloco;
 
                 const blocoHtml = `
-            <div class="card bloco-card p-3" id="bloco_${blocoId}">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div class="d-flex align-items-center gap-2 flex-grow-1 me-3">
+            <div class="card bloco-card p-3 shadow-sm" id="bloco_${blocoId}">
+                <div class="d-flex justify-content-between align-items-center mb-2 cabecalho-bloco">
+                    <div class="d-flex align-items-center gap-2 flex-grow-1 me-2">
+                        <span class="btn btn-sm btn-light p-1 cursor-grab handle-drag-bloco text-muted" title="Segure e arraste para reordenar este Bloco">
+                            <i class="bi bi-grip-vertical fs-5"></i>
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 btnToggleBloco" title="Minimizar / Expandir Bloco">
+                            <i class="bi bi-chevron-down icone-toggle-bloco"></i>
+                        </button>
                         <span class="badge bg-primary fs-6">Bloco</span>
                         <select name="blocos[${blocoId}][categoria]" class="form-select form-select-sm fw-bold w-auto">
                             <option value="PRELIMINARES">DAS PRELIMINARES</option>
@@ -335,21 +373,25 @@
                             <option value="SUBSIDIARIAS">DOS PEDIDOS SUBSIDIÁRIOS</option>
                         </select>
                     </div>
-                    <div>
-                        <button type="button" class="btn btn-sm btn-outline-success btnAdicionarTese" data-bloco="${blocoId}">
+                    <div class="d-flex align-items-center gap-1">
+                        <button type="button" class="btn btn-sm btn-outline-success btnAdicionarTese" data-bloco="${blocoId}" title="Adicionar Tese a este Bloco">
                             <i class="bi bi-plus-lg"></i> Adicionar Tese
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-danger btnRemoverBloco" data-bloco="${blocoId}">
+                        <button type="button" class="btn btn-sm btn-outline-danger btnRemoverBloco" data-bloco="${blocoId}" title="Excluir Bloco Inteiro">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
                 </div>
-                <div class="containerTeses" id="containerTeses_${blocoId}">
-                    <!-- Teses pertencentes a este bloco serão inseridas aqui -->
+                <div class="corpo-bloco mt-2">
+                    <div class="containerTeses" id="containerTeses_${blocoId}">
+                        <!-- Teses pertencentes a este bloco serão inseridas aqui -->
+                    </div>
                 </div>
             </div>`;
 
                 $('#containerBlocos').append(blocoHtml);
+                // Ativa a capacidade de arrastar teses dentro deste novo bloco
+                ativarSortableTeses(document.getElementById(`containerTeses_${blocoId}`));
                 // Cria uma tese inicial por padrão dentro do novo bloco
                 adicionarTese(blocoId);
             });
@@ -374,40 +416,57 @@
             function adicionarTese(blocoId) {
                 const teseId = Date.now();
                 const teseHtml = `
-            <div class="card tese-card p-3" id="tese_${teseId}">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                    <span class="fw-bold text-success small"><i class="bi bi-file-text me-1"></i>Tese Jurídica</span>
+            <div class="card tese-card p-3 shadow-sm" id="tese_${teseId}">
+                <div class="d-flex justify-content-between align-items-center mb-2 cabecalho-tese">
+                    <div class="d-flex align-items-center gap-2 flex-grow-1 me-2 overflow-hidden">
+                        <span class="btn btn-sm btn-light p-1 cursor-grab handle-drag-tese text-muted" title="Segure e arraste para reordenar esta Tese">
+                            <i class="bi bi-grip-vertical fs-5"></i>
+                        </span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 btnToggleTese" title="Minimizar / Expandir Tese">
+                            <i class="bi bi-chevron-down icone-toggle-tese"></i>
+                        </button>
+                        <span class="fw-bold text-success small text-nowrap"><i class="bi bi-file-text me-1"></i>Tese:</span>
+                        <span class="titulo-resumo-tese text-truncate small" title="Clique para expandir/ver">(Sem título definido)</span>
+                    </div>
                     <div class="d-flex align-items-center gap-1">
                         <input type="file" class="inputJsonTese d-none" accept=".json">
                         <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 btnExportarTese" title="Exportar esta Tese em JSON">
-                            <i class="bi bi-download"></i> Exportar Tese
+                            <i class="bi bi-download"></i> Exportar
                         </button>
                         <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 btnImportarTese" title="Importar dados para esta Tese">
-                            <i class="bi bi-upload"></i> Importar Tese
+                            <i class="bi bi-upload"></i> Importar
                         </button>
-                        <button type="button" class="btn btn-sm text-danger btnRemoverTese p-0 ms-2"><i class="bi bi-x-circle-fill fs-5"></i></button>
+                        <button type="button" class="btn btn-sm text-danger btnRemoverTese p-0 ms-2" title="Excluir Tese"><i class="bi bi-x-circle-fill fs-5"></i></button>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label small fw-bold">Título da Tese:</label>
-                    <input type="text" name="blocos[${blocoId}][teses][${teseId}][titulo]" class="form-control form-control-sm fw-bold" placeholder="Ex: Da Ausência de Interesse Processual">
-                </div>
-                
-                <!-- Container de Blocos de Conteúdo Ordenáveis -->
-                <div class="containerElementos mb-2" id="elementos_${blocoId}_${teseId}"></div>
 
-                <!-- Botões para adicionar Parágrafos ou Citações onde desejar -->
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-sm btn-outline-primary btnAddElemento" data-bloco="${blocoId}" data-tese="${teseId}" data-tipo="texto">
-                        <i class="bi bi-plus-lg"></i> Parágrafo Normal
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-warning text-dark btnAddElemento" data-bloco="${blocoId}" data-tese="${teseId}" data-tipo="citacao">
-                        <i class="bi bi-quote"></i> Citação Longa (ABNT)
-                    </button>
+                <div class="corpo-tese mt-2">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Título da Tese:</label>
+                        <input type="text" name="blocos[${blocoId}][teses][${teseId}][titulo]" class="form-control form-control-sm fw-bold input-titulo-tese" placeholder="Ex: Da Ausência de Interesse Processual">
+                    </div>
+                    
+                    <!-- Container de Blocos de Conteúdo Ordenáveis -->
+                    <div class="containerElementos mb-2" id="elementos_${blocoId}_${teseId}"></div>
+
+                    <!-- Botões para adicionar Parágrafos, Citações ou Imagens onde desejar -->
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button type="button" class="btn btn-sm btn-outline-primary btnAddElemento" data-bloco="${blocoId}" data-tese="${teseId}" data-tipo="texto">
+                            <i class="bi bi-plus-lg"></i> Parágrafo Normal
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-warning text-dark btnAddElemento" data-bloco="${blocoId}" data-tese="${teseId}" data-tipo="citacao">
+                            <i class="bi bi-quote"></i> Citação Longa (ABNT)
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-info text-dark btnAddElemento" data-bloco="${blocoId}" data-tese="${teseId}" data-tipo="imagem">
+                            <i class="bi bi-image"></i> Inserir Imagem / Print
+                        </button>
+                    </div>
                 </div>
             </div>`;
 
                 $(`#containerTeses_${blocoId}`).append(teseHtml);
+                // Ativa a reordenação por arraste nos elementos internos (parágrafos, citações e imagens)
+                ativarSortableElementos(document.getElementById(`elementos_${blocoId}_${teseId}`));
                 // Inicia por padrão com 1 parágrafo normal
                 adicionarElementoConteudo(blocoId, teseId, 'texto');
             }
@@ -431,11 +490,11 @@
                         <input type="hidden" name="blocos[${blocoId}][teses][${teseId}][elementos][${elemId}][tipo]" value="texto">
                         <textarea name="blocos[${blocoId}][teses][${teseId}][elementos][${elemId}][conteudo]" class="form-control wysiwyg-dinamico" rows="3"></textarea>
                     </div>`;
-                } else {
+                } else if (tipo === 'citacao') {
                     campoHtml = `
                     <div class="item-elemento citacao-box mb-2 p-2">
                         <div class="d-flex justify-content-between align-items-center mb-1">
-                            <span class="badge bg-warning text-dark"><i class="bi bi-quote"></i> Citação Longa Direta</span>
+                            <span class="badge bg-warning text-dark"><i class="bi bi-quote"></i> Citação Longa Direta (Editável com Cores e Marca-texto)</span>
                             <div>
                                 <button type="button" class="btn btn-sm btn-light btnMoverCima" title="Mover para Cima"><i class="bi bi-arrow-up"></i></button>
                                 <button type="button" class="btn btn-sm btn-light btnMoverBaixo" title="Mover para Baixo"><i class="bi bi-arrow-down"></i></button>
@@ -443,15 +502,43 @@
                             </div>
                         </div>
                         <input type="hidden" name="blocos[${blocoId}][teses][${teseId}][elementos][${elemId}][tipo]" value="citacao">
-                        <textarea name="blocos[${blocoId}][teses][${teseId}][elementos][${elemId}][conteudo]" class="form-control form-control-sm" rows="3" placeholder="Cole aqui a citação exata (recuo 4cm, fonte 10, simples)..."></textarea>
+                        <textarea name="blocos[${blocoId}][teses][${teseId}][elementos][${elemId}][conteudo]" class="form-control wysiwyg-dinamico" rows="3"></textarea>
+                    </div>`;
+                } else if (tipo === 'imagem') {
+                    campoHtml = `
+                    <div class="item-elemento card mb-2 p-2 border-info shadow-sm">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="badge bg-info text-dark"><i class="bi bi-image me-1"></i>Imagem / Print (Visual Law)</span>
+                            <div>
+                                <button type="button" class="btn btn-sm btn-light btnMoverCima" title="Mover para Cima"><i class="bi bi-arrow-up"></i></button>
+                                <button type="button" class="btn btn-sm btn-light btnMoverBaixo" title="Mover para Baixo"><i class="bi bi-arrow-down"></i></button>
+                                <button type="button" class="btn btn-sm text-danger btnRemoverElemento"><i class="bi bi-trash"></i></button>
+                            </div>
+                        </div>
+                        <input type="hidden" name="blocos[${blocoId}][teses][${teseId}][elementos][${elemId}][tipo]" value="imagem">
+                        <input type="hidden" name="blocos[${blocoId}][teses][${teseId}][elementos][${elemId}][conteudo]" class="input-imagem-base64">
+                        
+                        <div class="row g-2 align-items-center">
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold mb-1">Arquivo da Imagem (PNG, JPG, WebP):</label>
+                                <input type="file" class="form-control form-control-sm input-escolher-imagem" accept="image/*">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small fw-bold mb-1">Legenda da Imagem (opcional):</label>
+                                <input type="text" name="blocos[${blocoId}][teses][${teseId}][elementos][${elemId}][legenda]" class="form-control form-control-sm input-legenda-imagem" placeholder="Ex: Print da conversa de WhatsApp / Comprovante PIX">
+                            </div>
+                        </div>
+                        <div class="preview-imagem-container mt-2 text-center d-none">
+                            <img src="" class="img-thumbnail" style="max-height: 180px; object-fit: contain;">
+                        </div>
                     </div>`;
                 }
 
                 const $container = $(`#elementos_${blocoId}_${teseId}`);
                 $container.append(campoHtml);
 
-                if (tipo === 'texto') {
-                    iniciarWysiwyg($container.find('.wysiwyg-dinamico').last());
+                if (tipo === 'texto' || tipo === 'citacao') {
+                    iniciarWysiwyg($container.find('.wysiwyg-dinamico').last(), tipo === 'citacao' ? 110 : 140);
                 }
             }
 
@@ -466,6 +553,25 @@
             // Remover elemento
             $(document).on('click', '.btnRemoverElemento', function() {
                 $(this).closest('.item-elemento').remove();
+            });
+
+            // Carregamento e Preview da Imagem em Base64
+            $(document).on('change', '.input-escolher-imagem', function() {
+                const file = this.files[0];
+                if (!file) return;
+
+                const $card = $(this).closest('.item-elemento');
+                const $hidden = $card.find('.input-imagem-base64');
+                const $previewContainer = $card.find('.preview-imagem-container');
+                const $previewImg = $previewContainer.find('img');
+
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    $hidden.val(e.target.result);
+                    $previewImg.attr('src', e.target.result);
+                    $previewContainer.removeClass('d-none');
+                };
+                reader.readAsDataURL(file);
             });
 
             // Mover elemento para cima (▲)
@@ -542,16 +648,19 @@
                         };
 
                         $(this).find('.item-elemento').each(function() {
-                            const tipo = $(this).find('input[type="hidden"]').val();
+                            const tipo = $(this).find('input[type="hidden"][name*="[tipo]"]').val();
                             let conteudo = '';
-                            if (tipo === 'texto') {
+                            let legenda = '';
+                            if (tipo === 'texto' || tipo === 'citacao') {
                                 conteudo = $(this).find('textarea').summernote('code');
-                            } else {
-                                conteudo = $(this).find('textarea').val();
+                            } else if (tipo === 'imagem') {
+                                conteudo = $(this).find('.input-imagem-base64').val();
+                                legenda = $(this).find('.input-legenda-imagem').val();
                             }
                             tese.elementos.push({
                                 tipo,
-                                conteudo
+                                conteudo,
+                                legenda
                             });
                         });
 
@@ -969,6 +1078,73 @@ Tipos de elementos válidos: "texto" (parágrafo normal HTML) ou "citacao" (cita
 
                 modalImportacao.hide();
             });
+
+            // ========================================================
+            // FUNÇÕES DE ARRASTAR E MINIMIZAR / EXPANDIR (INTERATIVIDADE)
+            // ========================================================
+
+            // 1. Alternar Minimizar / Expandir Bloco
+            $(document).on('click', '.btnToggleBloco', function() {
+                const $corpo = $(this).closest('.bloco-card').find('.corpo-bloco').first();
+                const $icone = $(this).find('.icone-toggle-bloco');
+                $corpo.slideToggle(200, function() {
+                    if ($corpo.is(':visible')) {
+                        $icone.removeClass('bi-chevron-right').addClass('bi-chevron-down');
+                    } else {
+                        $icone.removeClass('bi-chevron-down').addClass('bi-chevron-right');
+                    }
+                });
+            });
+
+            // 2. Alternar Minimizar / Expandir Tese
+            $(document).on('click', '.btnToggleTese', function() {
+                const $tese = $(this).closest('.tese-card');
+                const $corpo = $tese.find('.corpo-tese').first();
+                const $icone = $(this).find('.icone-toggle-tese');
+                $corpo.slideToggle(200, function() {
+                    if ($corpo.is(':visible')) {
+                        $icone.removeClass('bi-chevron-right').addClass('bi-chevron-down');
+                    } else {
+                        $icone.removeClass('bi-chevron-down').addClass('bi-chevron-right');
+                    }
+                });
+            });
+
+            // 3. Atualizar resumo do título da tese em tempo real no cabeçalho
+            $(document).on('input', '.input-titulo-tese', function() {
+                const valor = $(this).val().trim();
+                const $resumo = $(this).closest('.tese-card').find('.titulo-resumo-tese');
+                $resumo.text(valor ? valor : '(Sem título definido)');
+            });
+
+            // 4. Configuração do SortableJS para Blocos de Teses
+            if (document.getElementById('containerBlocos')) {
+                new Sortable(document.getElementById('containerBlocos'), {
+                    handle: '.handle-drag-bloco',
+                    animation: 150,
+                    ghostClass: 'sortable-ghost'
+                });
+            }
+
+            // 5. Função para ativar arraste de Teses (permite mover entre blocos!)
+            function ativarSortableTeses(elementoContainer) {
+                if (!elementoContainer) return;
+                new Sortable(elementoContainer, {
+                    group: 'teses-compartilhadas', // Permite arrastar uma tese de um bloco para outro!
+                    handle: '.handle-drag-tese',
+                    animation: 150,
+                    ghostClass: 'sortable-ghost'
+                });
+            }
+
+            // 6. Função para ativar arraste de Elementos (parágrafos, citações, imagens)
+            function ativarSortableElementos(elementoContainer) {
+                if (!elementoContainer) return;
+                new Sortable(elementoContainer, {
+                    animation: 150,
+                    ghostClass: 'sortable-ghost'
+                });
+            }
 
             // Inicia com um bloco pré-criado
             $('#btnAdicionarBloco').click();

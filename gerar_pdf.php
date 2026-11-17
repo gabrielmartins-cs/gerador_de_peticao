@@ -46,10 +46,16 @@ if (!empty($dados['blocos']) && is_array($dados['blocos'])) {
         $subItem = 1;
 
         foreach ($teses as $tese) {
-            // Título da Tese
-            if (!empty(trim($tese['titulo'] ?? ''))) {
+            // Título da Tese (higienizado contra 'Enter' e quebras de linha)
+            $tituloBruto = strip_tags($tese['titulo'] ?? '');
+            // Converte qualquer quebra de linha (\r, \n, tabulações) em um espaço simples
+            $tituloLimpo = trim(preg_replace('/\s+/', ' ', $tituloBruto));
+            // Remove eventual numeração manual repetida (ex: se a IA já colocou "2.1." ou "2.1 - ")
+            $tituloLimpo = preg_replace('/^\d+(\.\d+)*\s*[-–.]?\s*/', '', $tituloLimpo);
+
+            if (!empty($tituloLimpo)) {
                 $numeracao = "{$contadorBloco}.{$subItem}. ";
-                $htmlBlocos .= '<div class="titulo-tese">' . $numeracao . mb_strtoupper(htmlspecialchars(trim($tese['titulo'])), 'UTF-8') . '</div>';
+                $htmlBlocos .= '<div class="titulo-tese">' . $numeracao . mb_strtoupper(htmlspecialchars($tituloLimpo, ENT_QUOTES, 'UTF-8'), 'UTF-8') . '</div>';
             }
 
             // Elementos Sequenciais (Parágrafos e Citações na ordem escolhida)
@@ -58,12 +64,16 @@ if (!empty($dados['blocos']) && is_array($dados['blocos'])) {
                     $tipo = $elem['tipo'] ?? 'texto';
                     $conteudo = $elem['conteudo'] ?? '';
 
-                    if ($tipo === 'citacao' && !empty(trim($conteudo))) {
-                        // Citação Direta Longa (+ 3 linhas): Recuo 4cm, Fonte 10, Simples
-                        $htmlBlocos .= '<div class="citacao-longa">' . nl2br(htmlspecialchars(trim($conteudo))) . '</div>';
+                    if ($tipo === 'citacao' && !empty(trim(strip_tags($conteudo)))) {
+                        // Citação Direta Longa com suporte a cores e marca-texto
+                        $htmlBlocos .= '<div class="citacao-longa">' . $conteudo . '</div>';
                     } elseif ($tipo === 'texto' && !empty(trim(strip_tags($conteudo)))) {
                         // Parágrafo Normal vindo do Summernote
                         $htmlBlocos .= '<div class="paragrafo-comum">' . $conteudo . '</div>';
+                    } elseif ($tipo === 'imagem' && !empty($conteudo)) {
+                        // Imagem / Print anexado na Tese
+                        $legenda = !empty($elem['legenda'] ?? '') ? '<div class="legenda-imagem">' . htmlspecialchars(trim($elem['legenda']), ENT_QUOTES, 'UTF-8') . '</div>' : '';
+                        $htmlBlocos .= '<div class="container-imagem"><img src="' . $conteudo . '" class="img-anexo" />' . $legenda . '</div>';
                     }
                 }
             }
@@ -78,6 +88,7 @@ $htmlCompleto = '
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta charset="UTF-8">
     <style>
         @page {
@@ -86,13 +97,17 @@ $htmlCompleto = '
             margin-right: 2cm;
             margin-bottom: 2cm;
         }
+        * {
+            box-sizing: border-box;
+        }
         body {
             font-family: "Times New Roman", Times, serif;
             font-size: 12pt;
             color: #000;
             line-height: 1.5;
+            word-wrap: break-word;
         }
-        /* Papel timbrado em segundo plano cobrindo a página inteira */
+        /* Papel timbrado em segundo plano */
         .bg-timbrado {
             position: fixed;
             top: -3cm;
@@ -106,8 +121,9 @@ $htmlCompleto = '
             text-align: center;
             font-weight: bold;
             text-transform: uppercase;
-            margin-bottom: 2cm;
+            margin-bottom: 1.5cm;
             line-height: 1.5;
+            page-break-inside: avoid;
         }
         /* Nome da Ação */
         .nome-acao {
@@ -116,19 +132,22 @@ $htmlCompleto = '
             font-size: 14pt;
             text-decoration: underline;
             text-transform: uppercase;
-            margin-top: 1cm;
-            margin-bottom: 1cm;
+            margin-top: 0.8cm;
+            margin-bottom: 0.8cm;
+            page-break-inside: avoid;
         }
-        /* Título das Seções Principais (I. DOS FATOS, II. DAS PRELIMINARES...) */
+        /* Título das Seções Principais (não separa do texto seguinte) */
         .titulo-secao, .titulo-bloco {
             font-weight: bold;
             font-size: 12pt;
             text-transform: uppercase;
-            margin-top: 1cm;
+            margin-top: 0.8cm;
             margin-bottom: 0.4cm;
             text-align: left;
+            page-break-after: avoid;
+            page-break-inside: avoid;
         }
-        /* Subtítulo da Tese (Ex: 2.1. DA AUSÊNCIA DE INTERESSE) */
+        /* Subtítulo da Tese (não fica órfão no rodapé) */
         .titulo-tese {
             font-weight: bold;
             font-size: 12pt;
@@ -136,29 +155,66 @@ $htmlCompleto = '
             margin-top: 0.6cm;
             margin-bottom: 0.3cm;
             text-align: left;
+            page-break-after: avoid;
+            page-break-inside: avoid;
         }
-        /* Parágrafos comuns (Recuo ABNT de 1,5cm na 1ª linha e justificado) */
-        p, .paragrafo-comum p {
+        /* Parágrafos comuns */
+        p, .paragrafo-comum p, .paragrafo-comum {
             text-align: justify;
             text-indent: 1.5cm;
             margin-top: 0;
-            margin-bottom: 0.4cm;
+            margin-bottom: 0.35cm;
             line-height: 1.5;
+            orphans: 2;
+            widows: 2;
         }
-        /* Citação Longa Direta (Regra ABNT: Recuo 4cm, Fonte 10, Entrelinhas 1.0) */
+        /* Citação Longa Direta com suporte a marca-texto e cores */
         .citacao-longa {
             margin-left: 4cm;
-            margin-top: 0.3cm;
-            margin-bottom: 0.4cm;
-            font-size: 10pt;
-            line-height: 1.0;
+            margin-right: 0;
+            margin-top: 0.35cm;
+            margin-bottom: 0.45cm;
+            padding: 8px 12px;
+            background-color: #f8fafc;
+            border-left: 3pt solid #1e3a5f;
+            font-size: 9.5pt;
+            color: #2d3748;
+            line-height: 1.25;
             text-align: justify;
-            text-indent: 0;
+            text-indent: 0 !important;
+            page-break-inside: avoid;
+        }
+        .citacao-longa p {
+            text-indent: 0 !important;
+            margin-bottom: 4px;
+            font-size: 9.5pt;
+            line-height: 1.25;
+        }
+/* Imagens e Prints (Visual Law) */
+        .container-imagem {
+            text-align: center;
+            margin-top: 0.5cm;
+            margin-bottom: 0.5cm;
+            page-break-inside: avoid;
+        }
+        .img-anexo {
+            max-width: 15cm;
+            max-height: 12cm;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+        }
+        .legenda-imagem {
+            font-size: 8.5pt;
+            color: #4b5563;
+            font-style: italic;
+            margin-top: 4px;
+            text-align: center;
         }
         .fechamento {
-            margin-top: 1cm;
+            margin-top: 0.8cm;
             text-align: left;
             text-indent: 0;
+            page-break-inside: avoid;
         }
     </style>
 </head>
@@ -216,7 +272,8 @@ $options->set('isHtml5ParserEnabled', true);
 $options->set('defaultFont', 'Times-Roman');
 
 $dompdf = new Dompdf($options);
-$dompdf->loadHtml($htmlCompleto);
+// Passa explicitamente a codificação UTF-8 para evitar caracteres quebrados
+$dompdf->loadHtml($htmlCompleto, 'UTF-8');
 $dompdf->setPaper('A4', 'portrait');
 $dompdf->render();
 

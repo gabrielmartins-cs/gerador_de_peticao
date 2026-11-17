@@ -158,11 +158,17 @@ class PeticaoWordxGenerator
             $subItem = 1;
 
             foreach ($teses as $tese) {
-                // 1. Título da Tese
-                if (!empty(trim($tese['titulo'] ?? ''))) {
+                // 1. Título da Tese (higienizado contra 'Enter' e quebras de linha)
+                $tituloBruto = strip_tags($tese['titulo'] ?? '');
+                // Converte qualquer quebra de linha (\r, \n, tabulações) em um espaço simples
+                $tituloLimpo = trim(preg_replace('/\s+/', ' ', $tituloBruto));
+                // Remove eventual numeração manual repetida (ex: se a IA já colocou "2.1." ou "2.1 - ")
+                $tituloLimpo = preg_replace('/^\d+(\.\d+)*\s*[-–.]?\s*/', '', $tituloLimpo);
+
+                if (!empty($tituloLimpo)) {
                     $numeracao = "{$contadorBloco}.{$subItem}. ";
                     $section->addText(
-                        $numeracao . mb_strtoupper(trim($tese['titulo']), 'UTF-8'),
+                        $numeracao . mb_strtoupper($tituloLimpo, 'UTF-8'),
                         ['name' => 'Times New Roman', 'size' => 12, 'bold' => true, 'underline' => 'single'],
                         ['spaceBefore' => 180, 'spaceAfter' => 120, 'alignment' => Jc::LEFT]
                     );
@@ -178,6 +184,8 @@ class PeticaoWordxGenerator
                             $this->adicionarCitacaoLonga($section, $conteudo);
                         } elseif ($tipo === 'texto' && !empty(trim(strip_tags($conteudo)))) {
                             $this->renderizarConteudoHtml($section, $conteudo);
+                        } elseif ($tipo === 'imagem' && !empty($conteudo)) {
+                            $this->adicionarImagemElemento($section, $conteudo, $elem['legenda'] ?? '');
                         }
                     }
                 }
@@ -206,30 +214,100 @@ class PeticaoWordxGenerator
             ['alignment' => Jc::LEFT, 'spaceAfter' => 360]
         );
     }
-
     /**
-     * Citação Direta Longa (+ de 3 linhas):
+     * Insere imagens/prints Base64 com redimensionamento proporcional e legenda
+     */
+    private function adicionarImagemElemento($section, string $base64Dados, string $legenda = ''): void
+    {
+        if (preg_match('/^data:image\/(\w+);base64,/', $base64Dados, $tipoImg)) {
+            $ext = strtolower($tipoImg[1]);
+            $raw = substr($base64Dados, strpos($base64Dados, ',') + 1);
+            $binario = base64_decode($raw);
+
+            if ($binario !== false) {
+                $arquivoTemp = sys_get_temp_dir() . '/peticao_img_' . uniqid() . '.' . $ext;
+                file_put_contents($arquivoTemp, $binario);
+
+                $dimensoes = @getimagesize($arquivoTemp);
+                $largura = $dimensoes ? $dimensoes[0] : 400;
+                $altura  = $dimensoes ? $dimensoes[1] : 300;
+
+                // Limita a largura máxima para caber na página A4 sem estourar margem (~440pt)
+                $larguraMax = 440;
+                if ($largura > $larguraMax) {
+                    $altura = ($altura * $larguraMax) / $largura;
+                    $largura = $larguraMax;
+                }
+
+                $section->addTextBreak(1, ['size' => 6]);
+                $section->addImage($arquivoTemp, [
+                    'width'       => $largura,
+                    'height'      => $altura,
+                    'alignment'   => Jc::CENTER
+                ]);
+                @unlink($arquivoTemp);
+
+                // Legenda opcional centralizada em cinza/itálico
+                if (!empty(trim($legenda))) {
+                    $section->addText(
+                        trim($legenda),
+                        ['name' => 'Times New Roman', 'size' => 9, 'italic' => true, 'color' => '555555'],
+                        ['alignment' => Jc::CENTER, 'spaceBefore' => 60, 'spaceAfter' => 120]
+                    );
+                } else {
+                    $section->addTextBreak(1, ['size' => 6]);
+                }
+            }
+        }
+    }
+    /**
+     * Citação Direta Longa - Estilo Minimalista / Legal Design:
+     * - Caixa com borda lateral azul sóbrio (1E3A5F)
+     * - Fundo suave (F8FAFC)
      * - Recuo de 4 cm à esquerda (2268 twips)
-     * - Fonte tamanho 10
-     * - Espaçamento entrelinhas simples (lineHeight 1.0)
+     * - Fonte tamanho 9.5 em tom grafite
      */
     private function adicionarCitacaoLonga($section, string $textoCitacao): void
     {
-        $linhas = explode("\n", trim($textoCitacao));
-        foreach ($linhas as $linha) {
-            $linhaLimpa = trim($linha);
-            if (!empty($linhaLimpa)) {
-                $section->addText(
-                    $linhaLimpa,
-                    ['name' => 'Times New Roman', 'size' => 10, 'italic' => false, 'color' => '1B2232'],
-                    [
-                        'alignment'   => Jc::BOTH,
-                        'indentation' => ['left' => 2268], // 4 cm
-                        'lineHeight'  => 1.0,
-                        'spaceBefore' => 60,
-                        'spaceAfter'  => 60
-                    ]
-                );
+        // Tabela de 1 célula para criar a caixa com cor de fundo e borda lateral
+        $tabela = $section->addTable([
+            'alignment' => \PhpOffice\PhpWord\SimpleType\JcTable::START,
+            'indent'    => new \PhpOffice\PhpWord\ComplexType\TblWidth(2268, 'dxa'), // Recuo de 4 cm
+        ]);
+
+        $celula = $tabela->addRow()->addCell(6800, [
+            'bgColor'          => 'F8FAFC',
+            'borderLeftSize'   => 18,          // ~2.5pt de espessura
+            'borderLeftColor'  => '1E3A5F',    // Azul marinho/ardósia
+            'borderTopSize'    => 0,
+            'borderRightSize'  => 0,
+            'borderBottomSize' => 0,
+            'paddingTop'       => 120,
+            'paddingBottom'    => 120,
+            'paddingLeft'      => 180,
+            'paddingRight'     => 120,
+        ]);
+
+        // Renderiza o HTML da citação preservando marca-texto, cores e negrito
+        $htmlTratado = str_ireplace(['<br>', '<br/>', '<br />'], '</p><p>', $textoCitacao);
+        $htmlTratado = strip_tags($htmlTratado, '<p><b><strong><i><em><u><span><font><mark>');
+
+        preg_match_all('/<p[^>]*>(.*?)<\/p>/is', $htmlTratado, $matches);
+        $paragrafos = !empty($matches[1]) ? $matches[1] : explode("\n", $htmlTratado);
+
+        $estiloCitacao = [
+            'alignment'   => Jc::BOTH,
+            'lineHeight'  => 1.15,
+            'spaceBefore' => 30,
+            'spaceAfter'  => 30
+        ];
+
+        foreach ($paragrafos as $p) {
+            $pLimpo = trim(strip_tags($p));
+            if (!empty($pLimpo)) {
+                $run = $celula->addTextRun($estiloCitacao);
+                $fragmentoHtml = '<span style="font-family: Times New Roman; font-size: 9.5pt; color: #2D3748;">' . $p . '</span>';
+                Html::addHtml($run, $fragmentoHtml, false, false);
             }
         }
         $section->addTextBreak(1, ['size' => 6]);
@@ -242,12 +320,12 @@ class PeticaoWordxGenerator
     {
         if (empty(trim($html))) return;
 
-        // Limpeza de tags desnecessárias para evitar quebras no PhpWord
+        // Preserva tags de cor, estilo e marca-texto (span, font, mark)
         $htmlTratado = str_ireplace(['<br>', '<br/>', '<br />'], '</p><p>', $html);
-        $htmlTratado = strip_tags($htmlTratado, '<p><b><strong><i><em><u>');
+        $htmlTratado = strip_tags($htmlTratado, '<p><b><strong><i><em><u><span><font><mark>');
 
         preg_match_all('/<p[^>]*>(.*?)<\/p>/is', $htmlTratado, $matches);
-        $paragrafos = !empty($matches[1]) ? $matches[1] : explode("\n", strip_tags($htmlTratado));
+        $paragrafos = !empty($matches[1]) ? $matches[1] : explode("\n", $htmlTratado);
 
         $estiloParagrafo = [
             'alignment'  => Jc::BOTH,
@@ -256,16 +334,16 @@ class PeticaoWordxGenerator
         ];
 
         foreach ($paragrafos as $p) {
-            $pLimpo = trim(html_entity_decode($p, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            $pLimpo = trim(html_entity_decode(strip_tags($p), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
             $pLimpo = str_replace('&nbsp;', ' ', $pLimpo);
 
-            if (!empty(trim(strip_tags($pLimpo)))) {
+            if (!empty($pLimpo)) {
                 $run = $section->addTextRun($estiloParagrafo);
                 if (!$semRecuoPrimeiraLinha) {
                     $run->addText(self::RECUO_PRIMEIRA_LINHA);
                 }
 
-                $fragmentoHtml = '<span style="font-family: Times New Roman; font-size: 12pt; color: #000000;">' . $p . '</span>';
+                $fragmentoHtml = '<span style="font-family: Times New Roman; font-size: 12pt;">' . $p . '</span>';
                 Html::addHtml($run, $fragmentoHtml, false, false);
             }
         }
